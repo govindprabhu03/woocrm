@@ -232,8 +232,10 @@ def approve(mid: int, request: Request, db: Session = Depends(get_db)):
     m = db.get(Communication, mid)
     if not m or m.status != "draft":
         raise HTTPException(404, "Draft not found")
-    ok = request.app.state.sender.send(m.customer.email, m.subject, m.body)
-    m.status = "sent" if ok else "failed"
+    if "unsubscribed" in (m.customer.tags or []):
+        m.status = "skipped"
+    else:
+        m.status = "sent" if request.app.state.sender.send(m.customer.email, m.subject, m.body) else "failed"
     db.commit()
     return comm_dict(m)
 

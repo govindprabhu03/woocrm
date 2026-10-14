@@ -24,6 +24,9 @@ class Settings:
     anthropic_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
     llm_model: str = field(default_factory=lambda: _env("LLM_MODEL", "claude-sonnet-5-5"))
     auto_seed: bool = field(default_factory=lambda: _env("AUTO_SEED", "1") == "1")
+    sendgrid_api_key: str = field(default_factory=lambda: _env("SENDGRID_API_KEY"))
+    mail_from: str = field(default_factory=lambda: _env("MAIL_FROM"))  # must be a SendGrid-verified sender
+    sendgrid_sandbox: bool = field(default_factory=lambda: _env("SENDGRID_SANDBOX") == "1")
     admin_user: str = field(default_factory=lambda: _env("ADMIN_USER", "admin"))
     admin_password: str = field(default_factory=lambda: _env("ADMIN_PASSWORD"))  # empty => auth off (dev only)
     session_secret: str = field(default_factory=lambda: _env("SESSION_SECRET"))

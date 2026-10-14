@@ -24,7 +24,7 @@ Why: WooCRM is a long-running Python server that must receive public **webhooks*
 - [x] Health endpoint, non-root container, pinned dependencies, CI (tests, coverage gate, bandit, pip-audit, docker build)
 - [x] Structured auth logging (login ok/failed/blocked)
 - [ ] Use Postgres + automated backups (SQLite on free tier resets on redeploy)
-- [ ] Real email provider (SendGrid/SES/SMTP) behind `EmailSender`, with SPF/DKIM + unsubscribe link
+- [x] Real email via SendGrid (`SENDGRID_API_KEY`, `MAIL_FROM`; `SENDGRID_SANDBOX=1` to test safely). Still do: verify your sender/domain in SendGrid (SPF/DKIM)
 - [ ] Alerting/uptime monitor on `/health` (UptimeRobot/Better Stack); error tracking (Sentry)
 - [ ] Custom domain + rotate secrets periodically; consider SSO/MFA for multi-user
 - [ ] Data-protection: retention policy and customer data deletion on request

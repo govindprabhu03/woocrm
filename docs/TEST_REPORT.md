@@ -5,12 +5,12 @@ Run date: 2026-10-14 · Python 3.12 · FastAPI 0.143 · SQLAlchemy 2.1
 ## Summary
 | Check | Result |
 |---|---|
-| Automated tests | **44 passed, 0 failed** (unit 14, real-Woo-client contract 3, API end-to-end 9, security/robustness 18) |
+| Automated tests | **52 passed + 13 browser tests passed, 0 failed** (unit 14, Woo-client contract 3, API end-to-end 9, security 18, email/SendGrid 8; Playwright/Chromium 13) |
 | Code coverage | **96 %** of `app/` (CI gate ≥ 90 %) |
 | Static security analysis (bandit) | **0 high / 0 medium**; 2 low findings reviewed and annotated (deterministic mock-data RNG; dev-only default secret rejected in production) |
 | Dependency audit (pip-audit) | **No known vulnerabilities** |
 | Load smoke (600 req, 25 concurrent, mixed endpoints, 1 uvicorn worker, SQLite) | **0 failures, 228 req/s, p50 72 ms, p95 300 ms** |
-| Manual browser QA | Login/logout, all 6 views, customer sheet, Ctrl+K palette, pipeline animation, agent chat — no JS errors |
+| Browser E2E (Playwright, real Chromium) | Login/logout, webhook→email flow, ship order, agent draft→approve, Ctrl+K, filters, workflow toggle persistence, stored-XSS inertness, all views without JS errors, 390px mobile overflow check |
 
 Reproduce: `pytest --cov=app` · `bandit -r app` · `pip-audit -r requirements.txt` · `python scripts/smoke_load.py http://127.0.0.1:8100 600 25`
 
@@ -41,8 +41,8 @@ Reproduce: `pytest --cov=app` · `bandit -r app` · `pip-audit -r requirements.t
 - [x] Workflow toggle off → no email on next matching event
 - [x] Customer notes/tags persist; XSS text shown as plain text
 - [ ] Real WooCommerce store connection (needs a live store + keys) — **not tested here**
-- [ ] Docker image build — Docker not installed on the dev machine; built in CI
+- [x] Docker image build — built in CI on every push
 - [ ] Cross-browser / mobile device testing — only the embedded Chromium pane used
 
 ## Not covered / recommended next
-Playwright browser E2E suite, multi-instance concurrency with Postgres, soak testing, accessibility audit (axe), real-email deliverability.
+Multi-instance concurrency with Postgres, soak testing, accessibility audit (axe), real-email deliverability.

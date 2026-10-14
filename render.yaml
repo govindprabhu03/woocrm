@@ -19,4 +19,8 @@ services:
         value: "1"
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: SENDGRID_API_KEY    # optional: real email delivery
+        sync: false
+      - key: MAIL_FROM           # verified SendGrid sender address
+        sync: false
       # Real store: set WOO_URL, WOO_KEY, WOO_SECRET. Persistent DB: set DATABASE_URL to a Postgres URL.

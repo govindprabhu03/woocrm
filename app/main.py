@@ -13,8 +13,9 @@ from app.db import make_session_factory
 from app.integrations.mock_woo import MockWooStore
 from app.integrations.woo import HttpWooClient
 from app.services import sync
+from app.services.email import build_sender
 from app.services.events import EventBus
-from app.services.workflows import RecordingSender, WorkflowEngine, seed_default_workflows
+from app.services.workflows import WorkflowEngine, seed_default_workflows
 
 STATIC = Path(__file__).parent / "static"
 CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
@@ -31,7 +32,7 @@ def create_app(settings: Settings | None = None, woo_client=None, sender=None) -
     app = FastAPI(title="WooCRM", version="1.0", description="CRM integrated with WooCommerce")
     st = app.state
     st.settings, st.session_factory, st.delivery = settings, make_session_factory(settings.database_url), 0
-    st.sender = sender or RecordingSender()
+    st.sender = sender or build_sender(settings)
     st.woo = woo_client or (MockWooStore().seed() if settings.use_mock_store
                             else HttpWooClient(settings.woo_url, settings.woo_key, settings.woo_secret))
     st.bus = EventBus()

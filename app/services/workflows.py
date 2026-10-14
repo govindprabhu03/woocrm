@@ -46,7 +46,12 @@ def queue_message(db: Session, customer: Customer, subject: str, body: str, *, o
                   workflow_id: int | None = None, dedupe_key: str | None = None,
                   sender: EmailSender | None = None, draft: bool = False) -> Communication | None:
     """Create a Communication (sent or draft). Returns None if dedupe_key already used."""
-    status = "draft" if draft else ("sent" if (sender or RecordingSender()).send(customer.email, subject, body) else "failed")
+    if "unsubscribed" in (customer.tags or []):  # compliance: never email opted-out customers
+        status = "skipped"
+    elif draft:
+        status = "draft"
+    else:
+        status = "sent" if (sender or RecordingSender()).send(customer.email, subject, body) else "failed"
     comm = Communication(customer_id=customer.id, workflow_id=workflow_id, subject=subject, body=body,
                          status=status, origin=origin, dedupe_key=dedupe_key)
     try:
