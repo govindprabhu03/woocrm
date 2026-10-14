@@ -44,8 +44,8 @@ def gemini_declarations() -> list[dict]:
     return decls
 
 
-def pick_model(models: list[dict]) -> str | None:
-    """Best usable chat model from a ListModels response: stable full-size Flash first, newest version wins."""
+def rank_models(models: list[dict]) -> list[str]:
+    """Usable chat models from a ListModels response, best first: stable full-size Flash, newest version."""
     def score(m: dict):
         name = m["name"].removeprefix("models/")
         ver = re.search(r"gemini-(\d+(?:\.\d+)?)", name)
@@ -55,7 +55,12 @@ def pick_model(models: list[dict]) -> str | None:
     banned = ("image", "tts", "live", "embed", "audio", "vision", "robotics", "computer", "aqa")
     ok = [m for m in models if "generateContent" in m.get("supportedGenerationMethods", [])
           and m["name"].startswith("models/gemini") and not any(b in m["name"] for b in banned)]
-    return max(ok, key=score)["name"].removeprefix("models/") if ok else None
+    return [m["name"].removeprefix("models/") for m in sorted(ok, key=score, reverse=True)]
+
+
+def pick_model(models: list[dict]) -> str | None:
+    ranked = rank_models(models)
+    return ranked[0] if ranked else None
 
 
 class GeminiAgent:
@@ -70,23 +75,27 @@ class GeminiAgent:
     def model(self) -> str:
         return _MODEL_CACHE.get(self.configured_model, self.configured_model)
 
-    def _discover_model(self) -> bool:
-        """Configured model is unavailable (404): ask the API which models this key can use and switch."""
+    def _alternatives(self, tried: set[str], limit: int = 3) -> list[str]:
+        """Other models this key can use (ListModels), best first, excluding ones already tried."""
         r = self._http.get(f"{API}/models", params={"pageSize": 200}, headers={"x-goog-api-key": self._key})
         r.raise_for_status()
-        found = pick_model(r.json().get("models", []))
-        if not found or found == self.model:
-            return False
-        log.warning("gemini model %s unavailable; using %s", self.model, found)
-        _MODEL_CACHE[self.configured_model] = found
-        return True
+        return [m for m in rank_models(r.json().get("models", [])) if m not in tried][:limit]
+
+    def _post(self, model: str, body: dict):
+        return self._http.post(GEMINI_URL.format(model=model), headers={"x-goog-api-key": self._key}, json=body)
 
     def _generate(self, contents: list):
         body = {"system_instruction": {"parts": [{"text": SYSTEM}]}, "contents": contents,
                 "tools": [{"functionDeclarations": gemini_declarations()}]}
-        r = self._http.post(GEMINI_URL.format(model=self.model), headers={"x-goog-api-key": self._key}, json=body)
-        if r.status_code == 404 and self._discover_model():
-            r = self._http.post(GEMINI_URL.format(model=self.model), headers={"x-goog-api-key": self._key}, json=body)
+        r = self._post(self.model, body)
+        if r.status_code in (404, 429):  # model missing for this key, or its free quota is exhausted: try the next best
+            for alt in self._alternatives({self.model}):
+                r2 = self._post(alt, body)
+                if r2.status_code == 200:
+                    log.warning("gemini model %s unavailable (HTTP %s); using %s", self.model, r.status_code, alt)
+                    _MODEL_CACHE[self.configured_model] = alt
+                    r = r2
+                    break
         r.raise_for_status()
         return r
 
@@ -94,8 +103,14 @@ class GeminiAgent:
         try:
             return self._loop(message)
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
-            reason = f"HTTP {e.response.status_code}" if isinstance(e, httpx.HTTPStatusError) else type(e).__name__
-            log.warning("gemini unavailable (%s) - using rule-based fallback", reason)  # key is in a header, never logged
+            reason, detail = type(e).__name__, ""
+            if isinstance(e, httpx.HTTPStatusError):
+                reason = f"HTTP {e.response.status_code}"
+                try:
+                    detail = " - " + e.response.json()["error"]["message"][:200]
+                except (ValueError, KeyError, TypeError):
+                    pass
+            log.warning("gemini unavailable (%s%s) - using rule-based fallback", reason, detail)  # key is in a header, never logged
             out = RuleBasedAgent(self.db).chat(message)
             out["engine"] = f"rules (gemini unavailable: {reason})"
             return out

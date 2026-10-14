@@ -246,3 +246,25 @@ def test_gemini_404_with_no_usable_model_falls_back_to_rules():
 
     out = GeminiAgent(db, "k", "gone", http=httpx.Client(transport=httpx.MockTransport(handler))).chat("overview")
     assert out["engine"] == "rules (gemini unavailable: HTTP 404)"
+
+
+def test_gemini_429_quota_tries_next_best_models_and_remembers_the_one_that_works():
+    agent_mod._MODEL_CACHE.clear()
+    db, posted = _seeded_db(), []
+    g = ["generateContent"]
+    listing = {"models": [{"name": "models/gemini-9-flash", "supportedGenerationMethods": g},
+                          {"name": "models/gemini-8-flash", "supportedGenerationMethods": g},
+                          {"name": "models/gemini-7-flash", "supportedGenerationMethods": g}]}
+
+    def handler(req):
+        if req.method == "GET":
+            return httpx.Response(200, json=listing)
+        posted.append(req.url.path.split("/")[-1].split(":")[0])
+        if posted[-1] in ("gemini-main", "gemini-9-flash"):
+            return httpx.Response(429, json={"error": {"message": "quota exceeded"}})
+        return httpx.Response(200, json={"candidates": [{"content": {"role": "model", "parts": [{"text": "ok"}]}}]})
+
+    agent = GeminiAgent(db, "k", "gemini-main", http=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert agent.chat("hi")["engine"] == "gemini (gemini-8-flash)"
+    assert posted == ["gemini-main", "gemini-9-flash", "gemini-8-flash"]
+    agent_mod._MODEL_CACHE.clear()
