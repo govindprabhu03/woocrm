@@ -268,3 +268,25 @@ def test_gemini_429_quota_tries_next_best_models_and_remembers_the_one_that_work
     assert agent.chat("hi")["engine"] == "gemini (gemini-8-flash)"
     assert posted == ["gemini-main", "gemini-9-flash", "gemini-8-flash"]
     agent_mod._MODEL_CACHE.clear()
+
+
+def test_gemini_status_reports_per_model_results_without_leaking_the_key():
+    from app.agent.agent import gemini_status
+
+    g = ["generateContent"]
+    listing = {"models": [{"name": f"models/gemini-{v}-flash", "supportedGenerationMethods": g} for v in (9, 8)]}
+
+    def handler(req):
+        if req.method == "GET":
+            return httpx.Response(200, json=listing)
+        if "gemini-9" in req.url.path:
+            return httpx.Response(429, json={"error": {"message": "Quota exceeded, limit: 0"}})
+        if "gemini-old" in req.url.path:
+            return httpx.Response(404, json={"error": {"message": "not found"}})
+        return httpx.Response(200, json={"candidates": []})
+
+    out = gemini_status("SECRET-KEY", "gemini-old", http=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert out["working_model"] == "gemini-8-flash" and out["engine"] == "gemini (gemini-8-flash)"
+    assert {p["model"]: p["status"] for p in out["probes"]} == {"gemini-old": 404, "gemini-9-flash": 429, "gemini-8-flash": 200}
+    assert "limit: 0" in str(out["probes"]) and "SECRET-KEY" not in str(out)
+    assert gemini_status("", "m")["reason"] == "GEMINI_API_KEY is not set"

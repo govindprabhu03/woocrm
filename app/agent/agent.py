@@ -69,7 +69,7 @@ class GeminiAgent:
     def __init__(self, db: Session, api_key: str, model: str, http: httpx.Client | None = None, max_steps: int = 6):
         self.db, self.tools = db, CrmTools(db)
         self._key, self.configured_model, self.max_steps = api_key, model, max_steps
-        self._http = http or httpx.Client(timeout=30)
+        self._http = http or httpx.Client(timeout=20)
 
     @property
     def model(self) -> str:
@@ -106,10 +106,7 @@ class GeminiAgent:
             reason, detail = type(e).__name__, ""
             if isinstance(e, httpx.HTTPStatusError):
                 reason = f"HTTP {e.response.status_code}"
-                try:
-                    detail = " - " + e.response.json()["error"]["message"][:200]
-                except (ValueError, KeyError, TypeError):
-                    pass
+                detail = " - " + _error_message(e.response)
             log.warning("gemini unavailable (%s%s) - using rule-based fallback", reason, detail)  # key is in a header, never logged
             out = RuleBasedAgent(self.db).chat(message)
             out["engine"] = f"rules (gemini unavailable: {reason})"
@@ -137,6 +134,41 @@ class GeminiAgent:
                 results.append({"functionResponse": {"name": c["name"], "response": {"result": self.tools.call(c["name"], args)}}})
             contents.append({"role": "user", "parts": results})
         return {"reply": "Stopped after max steps.", "tool_calls": trace, "engine": self.name}
+
+
+def gemini_status(api_key: str, configured: str, http: httpx.Client | None = None, probes: int = 4) -> dict:
+    """Admin diagnostic: which models can this key actually use right now? (tiny prompt, key never returned)"""
+    if not api_key:
+        return {"engine": "rules", "reason": "GEMINI_API_KEY is not set"}
+    http = http or httpx.Client(timeout=20)
+    hdr = {"x-goog-api-key": api_key}
+    try:
+        lst = http.get(f"{API}/models", params={"pageSize": 200}, headers=hdr)
+    except httpx.HTTPError as e:
+        return {"engine": "rules", "reason": f"cannot reach Gemini: {type(e).__name__}"}
+    if lst.status_code != 200:
+        return {"engine": "rules", "reason": f"ListModels HTTP {lst.status_code}", "detail": lst.text[:200]}
+    ranked = rank_models(lst.json().get("models", []))
+    order = ([configured] if configured not in ranked else []) + ranked
+    results = []
+    for m in order[:probes]:
+        try:
+            r = http.post(GEMINI_URL.format(model=m), headers=hdr,
+                          json={"contents": [{"role": "user", "parts": [{"text": "Reply with the single word OK"}]}]})
+            detail = "" if r.status_code == 200 else _error_message(r)
+            results.append({"model": m, "status": r.status_code, "detail": detail})
+        except httpx.HTTPError as e:
+            results.append({"model": m, "status": type(e).__name__, "detail": ""})
+    working = next((x["model"] for x in results if x["status"] == 200), None)
+    return {"engine": f"gemini ({working})" if working else "rules", "configured_model": configured,
+            "working_model": working, "available_models": ranked[:8], "probes": results}
+
+
+def _error_message(r: httpx.Response) -> str:
+    try:
+        return r.json()["error"]["message"][:200]
+    except (ValueError, KeyError, TypeError):
+        return r.text[:120]
 
 
 class RuleBasedAgent:

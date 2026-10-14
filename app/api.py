@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.agent.agent import build_agent
+from app.agent.agent import build_agent, gemini_status
 from app.agent.tools import retention_run
 from app.auth import require_auth
 from app.db import utcnow
@@ -248,6 +248,12 @@ class ChatIn(BaseModel):
 def agent_chat(body: ChatIn, request: Request, db: Session = Depends(get_db)):
     s = request.app.state.settings
     return build_agent(db, s.gemini_api_key, s.gemini_model).chat(body.message)
+
+
+@router.get("/agent/status")
+def agent_status(request: Request):
+    s = request.app.state.settings
+    return gemini_status(s.gemini_api_key, s.gemini_model)
 
 
 @router.post("/agent/retention-run")

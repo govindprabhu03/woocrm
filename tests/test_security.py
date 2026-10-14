@@ -35,6 +35,7 @@ def test_api_requires_login_but_health_and_static_do_not(ac):
     assert ac.get("/api/stats").status_code == 401
     assert ac.post("/api/sync").status_code == 401
     assert ac.post("/api/agent/retention-run").status_code == 401
+    assert ac.get("/api/agent/status").status_code == 401
     assert ac.get("/health").status_code == 200 and ac.get("/").status_code == 200
 
 
