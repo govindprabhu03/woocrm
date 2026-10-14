@@ -13,7 +13,7 @@ API = "https://generativelanguage.googleapis.com/v1beta"
 GEMINI_URL = API + "/models/{model}:generateContent"
 _MODEL_CACHE: dict[str, str] = {}  # configured model -> model actually usable with this key
 SYSTEM = ("You are the CRM assistant for a WooCommerce store. Use the tools to answer from real data. "
-          "Never claim to have sent email: drafts require human approval. Be concise.")
+          "Never claim to have sent email: drafts require human approval. Money amounts are Indian rupees: write them with the ₹ sign. Be concise.")
 
 
 class Agent(Protocol):

@@ -20,7 +20,7 @@ services:
       - key: GEMINI_API_KEY      # optional, free key from Google AI Studio
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3.6-flash
       - key: SENDGRID_API_KEY    # optional: real email delivery
         sync: false
       - key: MAIL_FROM           # verified SendGrid sender address

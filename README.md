@@ -67,7 +67,7 @@ To enable login set `ADMIN_PASSWORD` (and `SESSION_SECRET`); with `ENV=productio
 | `WOO_WEBHOOK_SECRET` | prod | dev placeholder | HMAC secret shared with WooCommerce webhooks (≥ 16 chars) |
 | `WOO_URL`, `WOO_KEY`, `WOO_SECRET` | real store | empty → built-in mock store | WooCommerce REST v3 connection |
 | `GEMINI_API_KEY` (alias `GOOGLE_API_KEY`) | – | empty → rule-based agent | Free key from Google AI Studio |
-| `GEMINI_MODEL` | – | `gemini-2.5-flash` | Gemini model used by the agent |
+| `GEMINI_MODEL` | – | `gemini-2.5-flash` | Preferred Gemini model. If it is missing or out of free quota, the agent auto-switches to the best model your key can use. Admin diagnostic: `GET /api/agent/status` |
 | `SENDGRID_API_KEY`, `MAIL_FROM`, `SENDGRID_SANDBOX` | – | empty → emails only logged | Optional real email delivery |
 | `ALLOW_SIMULATION` | – | `1` dev / `0` prod | Demo "simulate order" endpoint |
 | `AUTO_SEED` | – | `1` | Import mock-store demo data on first start |
