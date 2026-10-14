@@ -21,8 +21,8 @@ class Settings:
     woo_key: str = field(default_factory=lambda: _env("WOO_KEY"))
     woo_secret: str = field(default_factory=lambda: _env("WOO_SECRET"))
     webhook_secret: str = field(default_factory=lambda: _env("WOO_WEBHOOK_SECRET", DEFAULT_WEBHOOK_SECRET))
-    anthropic_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
-    llm_model: str = field(default_factory=lambda: _env("LLM_MODEL", "claude-sonnet-5-5"))
+    gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY") or _env("GOOGLE_API_KEY"))
+    gemini_model: str = field(default_factory=lambda: _env("GEMINI_MODEL", "gemini-2.5-flash"))
     auto_seed: bool = field(default_factory=lambda: _env("AUTO_SEED", "1") == "1")
     sendgrid_api_key: str = field(default_factory=lambda: _env("SENDGRID_API_KEY"))
     mail_from: str = field(default_factory=lambda: _env("MAIL_FROM"))  # must be a SendGrid-verified sender

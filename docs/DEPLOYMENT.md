@@ -13,7 +13,7 @@ Why: WooCRM is a long-running Python server that must receive public **webhooks*
 
 ## Deploy to Render (≈10 minutes)
 1. Push the repo to GitHub (done). In Render: **New → Blueprint** → select the repo (grant Render access to the private repo). `render.yaml` provisions the service.
-2. Open the service → **Environment**: read the generated `ADMIN_PASSWORD`; (optional) add `ANTHROPIC_API_KEY`.
+2. Open the service → **Environment**: read the generated `ADMIN_PASSWORD`; (optional) add `GEMINI_API_KEY` (free from https://aistudio.google.com/app/apikey) for the Gemini-powered agent.
 3. Open the URL, sign in as `admin`.
 4. **Connect a real store:** set `WOO_URL`, `WOO_KEY`, `WOO_SECRET` (WooCommerce → Settings → Advanced → REST API, read access), set `ALLOW_SIMULATION=0`. In WooCommerce → Settings → Advanced → Webhooks create `order.created`, `order.updated`, `customer.created` pointing to `https://<your-app>/api/webhooks/woocommerce`, **Secret = `WOO_WEBHOOK_SECRET`**.
 5. Press **Sync** once to import history (quiet — sends no emails).

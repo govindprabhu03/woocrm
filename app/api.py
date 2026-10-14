@@ -14,7 +14,6 @@ from app.domain.segmentation import SEGMENTS, rfm_score
 from app.integrations.woo import sign_payload, verify_signature
 from app.models import Communication, Customer, Order, WebhookEvent, Workflow
 from app.services import sync
-from app.services.workflows import queue_message
 
 MAX_WEBHOOK_BYTES = 1_000_000
 router = APIRouter(prefix="/api", dependencies=[Depends(require_auth)])  # admin-only
@@ -151,7 +150,7 @@ async def woo_webhook(request: Request, db: Session = Depends(get_db),
         return ingest_webhook(db, request.app.state.bus, x_wc_webhook_id, x_wc_webhook_topic, json.loads(body or b"{}"))
     except (ValueError, KeyError, TypeError, AttributeError):
         db.rollback()  # delivery stays unrecorded so a corrected retry is processed
-        raise HTTPException(422, "Malformed webhook payload")
+        raise HTTPException(422, "Malformed webhook payload") from None
 
 
 class Simulate(BaseModel):
@@ -248,7 +247,7 @@ class ChatIn(BaseModel):
 @router.post("/agent/chat")
 def agent_chat(body: ChatIn, request: Request, db: Session = Depends(get_db)):
     s = request.app.state.settings
-    return build_agent(db, s.anthropic_key, s.llm_model).chat(body.message)
+    return build_agent(db, s.gemini_api_key, s.gemini_model).chat(body.message)
 
 
 @router.post("/agent/retention-run")

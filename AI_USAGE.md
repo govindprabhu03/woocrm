@@ -9,7 +9,7 @@ Built end-to-end with **Claude Code** (Claude Sonnet 5.5) as pair-programmer, in
 | Implementation | Claude generated modules (sync, workflow engine, agent, API, UI) in dependency order, one layer at a time |
 | Testing | Claude wrote the unit + e2e suite alongside the code; a failing test was diagnosed and fixed (test bug: sort order) |
 | Verification | Server run in the in-app browser; UI flow exercised via script (simulate order → webhook → workflow → approve → agent); seed data re-tuned after noticing an unbalanced segment distribution |
-| Product feature | The **agent itself** is Claude tool-use (`app/agent/agent.py`), with a deterministic fallback and a scripted fake LLM in tests |
+| Product feature | The **agent itself** uses Google Gemini function calling (`app/agent/agent.py`) on the free API tier, with a deterministic fallback and a mocked transport in tests |
 | Docs | README, architecture notes and the video script were drafted by Claude and reviewed by me |
 
 Human decisions: choosing the CRM topic, the human-approval rule for agent emails, segment thresholds, and what to cut from scope.

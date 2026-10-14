@@ -9,7 +9,7 @@ Hackathon topic: **CRM System Integration** — customer data management, order 
 | 2 | **Codebase quality** | Adapter (WooClient), Strategy (EmailSender, LLM backend), Observer (EventBus→workflow engine), Factory (`create_app`), DI via FastAPI; pytest unit + end-to-end tests; GitHub Actions CI |
 | 3 | **Documentation** | README with scope, assumptions, architecture diagram, run/deploy; `docs/ARCHITECTURE.md`; API docs at `/docs` |
 | 4 | **Video (2 min)** | `docs/VIDEO_SCRIPT.md` — timed script following the live demo flow |
-| 5 | **Agentic AI** | CRM Agent: Claude tool-use loop over CRM tools (segment, search, draft, create workflow) + autonomous "retention run" that drafts win-back emails for human approval; works offline via rule-based fallback |
+| 5 | **Agentic AI** | CRM Agent: Gemini function-calling loop over CRM tools (segment, search, draft, create workflow) + autonomous "retention run" that drafts win-back emails for human approval; works offline via rule-based fallback |
 | 6 | **Execution quality** | Polished dashboard, Dockerfile + `render.yaml`, seeded Mock WooCommerce so it demos without a live store; real store via env vars |
 
 ## Scope

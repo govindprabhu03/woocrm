@@ -8,4 +8,4 @@
 
 **1:10–1:40 Agentic AI** — AI Agent tab: ask "Who are my VIP customers?" (tool calls visible). Click *Run autonomous retention agent* → it drafts win-back emails; go to Communications and approve one. "Agents draft, humans send."
 
-**1:40–2:00 Engineering + AI usage** — Show architecture diagram (Adapter/Strategy/Observer), `pytest` 44 passing, and AI_USAGE.md: "Built with Claude Code from plan to tests; the product embeds Claude tool-use. Deployable via Docker/Render."
+**1:40–2:00 Engineering + AI usage** — Show architecture diagram (Adapter/Strategy/Observer), `pytest` 55 + 13 browser tests passing, and AI_USAGE.md: "Built with Claude Code from plan to tests; the product's agent uses Gemini function calling. Deployable via Docker/Render."

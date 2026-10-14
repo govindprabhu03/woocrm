@@ -5,7 +5,7 @@ Run date: 2026-10-14 · Python 3.12 · FastAPI 0.143 · SQLAlchemy 2.1
 ## Summary
 | Check | Result |
 |---|---|
-| Automated tests | **52 passed + 13 browser tests passed, 0 failed** (unit 14, Woo-client contract 3, API end-to-end 9, security 18, email/SendGrid 8; Playwright/Chromium 13) |
+| Automated tests | **55 passed + 13 browser tests passed, 0 failed** (unit 17, Woo-client contract 3, API end-to-end 9, security 18, email/SendGrid 8; Playwright/Chromium 13) |
 | Code coverage | **96 %** of `app/` (CI gate ≥ 90 %) |
 | Static security analysis (bandit) | **0 high / 0 medium**; 2 low findings reviewed and annotated (deterministic mock-data RNG; dev-only default secret rejected in production) |
 | Dependency audit (pip-audit) | **No known vulnerabilities** |
@@ -15,7 +15,7 @@ Run date: 2026-10-14 · Python 3.12 · FastAPI 0.143 · SQLAlchemy 2.1
 Reproduce: `pytest --cov=app` · `bandit -r app` · `pip-audit -r requirements.txt` · `python scripts/smoke_load.py http://127.0.0.1:8100 600 25`
 
 ## Test strategy
-- **Unit** — segmentation rules & RFM, payload mappers, HMAC signing, template rendering, workflow engine (conditions, dedupe, status transitions), agent tools, rule-based agent, Claude tool-use loop (scripted fake LLM).
+- **Unit** — segmentation rules & RFM, payload mappers, HMAC signing, template rendering, workflow engine (conditions, dedupe, status transitions), agent tools, rule-based agent, Gemini function-calling loop (mock transport: tool execution, verbatim part echo, key-in-header, declarations shape, max steps, quota/network fallback).
 - **Contract** — real `HttpWooClient` against a fake transport: pagination, Basic auth, `/wp-json/wc/v3` paths, HTTP errors surfaced (no silent partial data).
 - **End-to-end (API)** — seeded import → idempotent re-sync → signed webhook → workflow email → dedupe on retry → draft/approve → agent.
 - **Security/robustness** — see `SECURITY.md` table; includes SQL-injection strings, stored-XSS payload, oversized/malformed webhooks, forged/expired/tampered tokens, brute force, CSRF, production fail-closed config.

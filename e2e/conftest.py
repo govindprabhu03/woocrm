@@ -16,7 +16,7 @@ PASSWORD = "e2e-Passw0rd-123"
 @pytest.fixture(scope="session")
 def server():
     s = Settings(database_url="sqlite://", woo_url="", admin_password=PASSWORD, session_secret="s" * 40,
-                 webhook_secret="w" * 20, auto_seed=True, allow_simulation=True, sendgrid_api_key="", mail_from="")
+                 webhook_secret="w" * 20, auto_seed=True, allow_simulation=True, sendgrid_api_key="", mail_from="", gemini_api_key="")
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]

@@ -1,4 +1,4 @@
-"""CRM tools exposed to the agent (same functions back both the Claude tool-use loop and the offline fallback)."""
+"""CRM tools exposed to the agent (same functions back both the Gemini function-calling loop and the offline fallback)."""
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 

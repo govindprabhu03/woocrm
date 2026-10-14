@@ -1,5 +1,7 @@
 # WooCRM — CRM ⇄ WooCommerce Integration
 
+**🌐 Live demo: https://woocrm.onrender.com** · login-protected (credentials are supplied with the submission). Free tier: first load after idle takes ~30 s.
+
 A CRM that plugs into WooCommerce to give store owners **customer data management**, **order tracking** and **automated communication workflows**, plus an **agentic AI assistant** that does retention work for them.
 
 ![stack](https://img.shields.io/badge/FastAPI-SQLAlchemy-blue) ![tests](https://img.shields.io/badge/tests-52%20%2B%2013%20browser-green) ![coverage](https://img.shields.io/badge/coverage-96%25-green)
@@ -13,7 +15,7 @@ uvicorn app.main:create_app --factory --port 8100
 pytest --cov=app                                    # 52 unit, contract, API-e2e, security and email tests
 pip install playwright && playwright install chromium && pytest e2e   # 13 real-browser tests
 ```
-By default the app uses a **built-in Mock WooCommerce store** (seeded with 40 customers / 80 orders in the real Woo REST v3 payload shape). To connect a real store set `WOO_URL`, `WOO_KEY`, `WOO_SECRET`, `WOO_WEBHOOK_SECRET` (see `.env.example`). Set `ANTHROPIC_API_KEY` to power the agent with Claude; without it a rule-based fallback is used.
+By default the app uses a **built-in Mock WooCommerce store** (seeded with 40 customers / 80 orders in the real Woo REST v3 payload shape). To connect a real store set `WOO_URL`, `WOO_KEY`, `WOO_SECRET`, `WOO_WEBHOOK_SECRET` (see `.env.example`). Set `GEMINI_API_KEY` (free key from [Google AI Studio](https://aistudio.google.com/app/apikey)) to power the agent with Gemini; without it — or if the API is unavailable — a rule-based fallback answers from the same tools.
 
 ## Scope
 | Topic | Delivered |
@@ -33,7 +35,7 @@ flowchart LR
   Sync -- domain events --> Bus[EventBus]
   Bus --> WF[WorkflowEngine] --> Comm[Communications log / EmailSender]
   DB --> API[FastAPI] --> UI[Dashboard SPA]
-  API --> Agent[CRM Agent<br/>Claude tool-use | rules fallback] --> Tools[CrmTools] --> DB
+  API --> Agent[CRM Agent<br/>Gemini function-calling | rules fallback] --> Tools[CrmTools] --> DB
 ```
 Design patterns: **Adapter** (`WooClient` port: HTTP + Mock), **Strategy** (`EmailSender`, agent backend), **Observer** (`EventBus`), **Factory** (`create_app`), **Dependency Injection** (FastAPI `Depends`, injectable client/sender in tests). Pure domain logic (`domain/segmentation.py`) has no I/O. See `docs/ARCHITECTURE.md`.
 
@@ -55,6 +57,22 @@ Design patterns: **Adapter** (`WooClient` port: HTTP + Mock), **Strategy** (`Ema
 Admin login (signed HttpOnly session cookie), HMAC-verified webhooks, brute-force lockout, CSRF/CSP/security headers, input limits, fail-closed production config. Details: [`SECURITY.md`](SECURITY.md) · QA results: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) · Deploying: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 To enable login set `ADMIN_PASSWORD` (and `SESSION_SECRET`); with `ENV=production` they are mandatory. Without them the app runs open for local development only.
+
+## Configuration (environment variables)
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `ENV` | – | `development` | `production` enforces strong secrets, HSTS, Secure cookies |
+| `ADMIN_USER` / `ADMIN_PASSWORD` | prod | `admin` / *(empty = auth off, dev only)* | Dashboard login (password ≥ 12 chars in prod) |
+| `SESSION_SECRET` | prod | – | Signs session cookies (≥ 32 chars) |
+| `WOO_WEBHOOK_SECRET` | prod | dev placeholder | HMAC secret shared with WooCommerce webhooks (≥ 16 chars) |
+| `WOO_URL`, `WOO_KEY`, `WOO_SECRET` | real store | empty → built-in mock store | WooCommerce REST v3 connection |
+| `GEMINI_API_KEY` (alias `GOOGLE_API_KEY`) | – | empty → rule-based agent | Free key from Google AI Studio |
+| `GEMINI_MODEL` | – | `gemini-2.5-flash` | Gemini model used by the agent |
+| `SENDGRID_API_KEY`, `MAIL_FROM`, `SENDGRID_SANDBOX` | – | empty → emails only logged | Optional real email delivery |
+| `ALLOW_SIMULATION` | – | `1` dev / `0` prod | Demo "simulate order" endpoint |
+| `AUTO_SEED` | – | `1` | Import mock-store demo data on first start |
+| `DATABASE_URL` | – | `sqlite:///crm.db` | SQLite or Postgres (`postgres://` accepted) |
+| `PORT` | – | `8100` | Listen port (set by the platform on Render) |
 
 ## Operations
 - **Docker**: `docker build -t woocrm . && docker run -p 8100:8100 woocrm`

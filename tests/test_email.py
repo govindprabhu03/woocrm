@@ -4,8 +4,7 @@ from dataclasses import replace
 
 import httpx
 
-from app.config import Settings
-from app.models import Communication, Customer
+from app.models import Customer
 from app.services.email import SendGridSender, build_sender
 from app.services.workflows import RecordingSender, queue_message
 from app.db import make_session_factory

@@ -1,6 +1,10 @@
 from datetime import datetime, timedelta
 
-from app.agent.agent import ClaudeAgent, RuleBasedAgent
+import json
+
+import httpx
+
+from app.agent.agent import GeminiAgent, RuleBasedAgent, gemini_declarations
 from app.agent.tools import CrmTools, retention_run
 from app.db import make_session_factory
 from app.domain.segmentation import compute_segment, rfm_score
@@ -133,29 +137,63 @@ def test_rule_agent_routes_to_tools():
     assert r["engine"] == "rules" and "Vee" in r["reply"] and r["tool_calls"][0]["tool"] == "find_customers"
 
 
-class _Block:
-    def __init__(self, **kw):
-        self.__dict__.update(kw)
+def _gemini(handler, db):
+    return GeminiAgent(db, "test-key", "gemini-test", http=httpx.Client(transport=httpx.MockTransport(handler)))
 
 
-class _FakeLLM:
-    """Scripted Claude: first asks for a tool, then answers — verifies the tool-use loop wiring."""
-
-    def __init__(self):
-        self.calls = 0
-        self.messages = self
-
-    def create(self, **kw):
-        self.calls += 1
-        if self.calls == 1:
-            blk = _Block(type="tool_use", id="t1", name="segment_summary", input={})
-            return _Block(stop_reason="tool_use", content=[blk])
-        return _Block(stop_reason="end_turn", content=[_Block(type="text", text="You have 1 vip.")])
-
-
-def test_claude_agent_tool_loop():
+def _seeded_db():
     db, _ = _db()
-    db.add(Customer(email="v@x.com", segment="vip", total_spent=1))
+    db.add(Customer(email="v@x.com", first_name="Vee", segment="vip", total_spent=9000, order_count=6))
     db.commit()
-    r = ClaudeAgent(db, "k", "m", client=_FakeLLM()).chat("summary?")
-    assert r["reply"] == "You have 1 vip." and r["tool_calls"][0]["tool"] == "segment_summary"
+    return db
+
+
+def test_gemini_tool_loop_executes_tools_and_echoes_model_parts():
+    db, requests = _seeded_db(), []
+    call_part = {"functionCall": {"name": "find_customers", "args": {"segment": "vip"}}, "thoughtSignature": "sig123"}
+
+    def handler(req):
+        body = json.loads(req.content)
+        requests.append((req.headers["x-goog-api-key"], body))
+        if len(requests) == 1:
+            return httpx.Response(200, json={"candidates": [{"content": {"role": "model", "parts": [call_part]}}]})
+        return httpx.Response(200, json={"candidates": [{"content": {"role": "model", "parts": [{"text": "Vee is your VIP."}]}}]})
+
+    r = _gemini(handler, db).chat("who are my vips?")
+    assert r == {"reply": "Vee is your VIP.", "tool_calls": [{"tool": "find_customers", "args": {"segment": "vip"}}], "engine": "gemini"}
+    key, first = requests[0]
+    assert key == "test-key" and "key=" not in str(first)  # key travels in a header, not the URL/body
+    second = requests[1][1]["contents"]
+    assert second[1]["parts"][0]["thoughtSignature"] == "sig123"  # model turn echoed verbatim
+    tool_result = second[2]["parts"][0]["functionResponse"]
+    assert tool_result["name"] == "find_customers" and tool_result["response"]["result"][0]["name"] == "Vee"
+
+
+def test_gemini_declarations_are_valid_shape():
+    decls = {d["name"]: d for d in gemini_declarations()}
+    assert "parameters" not in decls["segment_summary"]  # Gemini rejects empty parameter objects
+    p = decls["draft_email"]["parameters"]
+    assert p["type"] == "OBJECT" and p["properties"]["customer_id"]["type"] == "INTEGER" and "customer_id" in p["required"]
+    assert decls["find_customers"]["parameters"]["properties"]["segment"]["enum"]
+
+
+def test_gemini_failures_fall_back_to_rules_and_say_why():
+    db = _seeded_db()
+    quota = _gemini(lambda r: httpx.Response(429, json={"error": {"message": "quota"}}), db).chat("show vip customers")
+    assert quota["engine"] == "rules (gemini unavailable: HTTP 429)" and "Vee" in quota["reply"]
+    bad = _gemini(lambda r: httpx.Response(200, json={"candidates": []}), db).chat("overview")
+    assert bad["engine"].startswith("rules (gemini unavailable") and "Segment overview" in bad["reply"]
+
+    def down(req):
+        raise httpx.ConnectError("offline")
+
+    assert _gemini(down, db).chat("overview")["engine"] == "rules (gemini unavailable: ConnectError)"
+
+
+def test_gemini_stops_after_max_steps():
+    db = _seeded_db()
+    loop = {"candidates": [{"content": {"role": "model", "parts": [{"functionCall": {"name": "segment_summary", "args": {}}}]}}]}
+    agent = _gemini(lambda r: httpx.Response(200, json=loop), db)
+    agent.max_steps = 3
+    out = agent.chat("x")
+    assert out["reply"] == "Stopped after max steps." and len(out["tool_calls"]) == 3

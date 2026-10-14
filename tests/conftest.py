@@ -7,7 +7,7 @@ from app.main import create_app
 
 @pytest.fixture
 def settings():
-    return Settings(database_url="sqlite://", woo_url="", anthropic_key="", auto_seed=True)
+    return Settings(database_url="sqlite://", woo_url="", gemini_api_key="", auto_seed=True)
 
 
 @pytest.fixture

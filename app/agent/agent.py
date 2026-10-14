@@ -1,12 +1,15 @@
-"""CRM agent. LLMBackend strategy: Claude tool-use loop when a key is set, rule-based fallback otherwise."""
-import json
+"""CRM agent. Strategy: Gemini function-calling loop when a key is set, rule-based fallback otherwise (or on any API failure)."""
+import logging
 import re
 from typing import Protocol
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.agent.tools import TOOL_SPECS, CrmTools, retention_run
 
+log = logging.getLogger("woocrm.agent")
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 SYSTEM = ("You are the CRM assistant for a WooCommerce store. Use the tools to answer from real data. "
           "Never claim to have sent email: drafts require human approval. Be concise.")
 
@@ -17,33 +20,70 @@ class Agent(Protocol):
     def chat(self, message: str) -> dict: ...
 
 
-class ClaudeAgent:
-    name = "claude"
+def _schema(prop: dict) -> dict:
+    out = {"type": prop["type"].upper()}
+    for k in ("enum", "description"):
+        if k in prop:
+            out[k] = prop[k]
+    return out
 
-    def __init__(self, db: Session, api_key: str, model: str, client=None, max_steps: int = 6):
-        import anthropic
 
-        self.tools = CrmTools(db)
-        self.model, self.max_steps = model, max_steps
-        self.client = client or anthropic.Anthropic(api_key=api_key)
+def gemini_declarations() -> list[dict]:
+    """Translate the shared tool specs to Gemini functionDeclarations (no `parameters` when a tool takes none)."""
+    decls = []
+    for t in TOOL_SPECS:
+        d = {"name": t["name"], "description": t["description"]}
+        props = t["input_schema"].get("properties") or {}
+        if props:
+            d["parameters"] = {"type": "OBJECT", "properties": {k: _schema(v) for k, v in props.items()}}
+            if t["input_schema"].get("required"):
+                d["parameters"]["required"] = t["input_schema"]["required"]
+        decls.append(d)
+    return decls
+
+
+class GeminiAgent:
+    name = "gemini"
+
+    def __init__(self, db: Session, api_key: str, model: str, http: httpx.Client | None = None, max_steps: int = 6):
+        self.db, self.tools = db, CrmTools(db)
+        self._key, self.model, self.max_steps = api_key, model, max_steps
+        self._http = http or httpx.Client(timeout=30)
 
     def chat(self, message: str) -> dict:
-        messages: list = [{"role": "user", "content": message}]
-        trace = []
+        try:
+            return self._loop(message)
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+            reason = f"HTTP {e.response.status_code}" if isinstance(e, httpx.HTTPStatusError) else type(e).__name__
+            log.warning("gemini unavailable (%s) - using rule-based fallback", reason)  # key is in a header, never logged
+            out = RuleBasedAgent(self.db).chat(message)
+            out["engine"] = f"rules (gemini unavailable: {reason})"
+            return out
+
+    def _loop(self, message: str) -> dict:
+        contents: list = [{"role": "user", "parts": [{"text": message}]}]
+        trace: list = []
         for _ in range(self.max_steps):
-            resp = self.client.messages.create(model=self.model, max_tokens=1024, system=SYSTEM,
-                                               tools=TOOL_SPECS, messages=messages)
-            if resp.stop_reason != "tool_use":
-                text = "".join(b.text for b in resp.content if b.type == "text")
-                return {"reply": text, "tool_calls": trace, "engine": self.name}
-            messages.append({"role": "assistant", "content": resp.content})
+            r = self._http.post(GEMINI_URL.format(model=self.model), headers={"x-goog-api-key": self._key}, json={
+                "system_instruction": {"parts": [{"text": SYSTEM}]}, "contents": contents,
+                "tools": [{"functionDeclarations": gemini_declarations()}]})
+            r.raise_for_status()
+            candidates = r.json().get("candidates") or []
+            if not candidates:
+                raise ValueError("empty response")
+            content = candidates[0].get("content") or {"role": "model", "parts": []}
+            parts = content.get("parts", [])
+            calls = [p["functionCall"] for p in parts if "functionCall" in p]
+            if not calls:
+                text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+                return {"reply": text or "I couldn't produce an answer.", "tool_calls": trace, "engine": self.name}
+            contents.append(content)  # verbatim: Gemini needs its own parts (incl. thought signatures) echoed back
             results = []
-            for block in resp.content:
-                if block.type == "tool_use":
-                    out = self.tools.call(block.name, block.input)
-                    trace.append({"tool": block.name, "args": block.input})
-                    results.append({"type": "tool_result", "tool_use_id": block.id, "content": json.dumps(out, default=str)})
-            messages.append({"role": "user", "content": results})
+            for c in calls:
+                args = c.get("args") or {}
+                trace.append({"tool": c["name"], "args": args})
+                results.append({"functionResponse": {"name": c["name"], "response": {"result": self.tools.call(c["name"], args)}}})
+            contents.append({"role": "user", "parts": results})
         return {"reply": "Stopped after max steps.", "tool_calls": trace, "engine": self.name}
 
 
@@ -79,4 +119,4 @@ class RuleBasedAgent:
 
 
 def build_agent(db: Session, api_key: str, model: str) -> Agent:
-    return ClaudeAgent(db, api_key, model) if api_key else RuleBasedAgent(db)
+    return GeminiAgent(db, api_key, model) if api_key else RuleBasedAgent(db)

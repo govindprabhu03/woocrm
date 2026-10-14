@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+*.db
+*.log
+tests
+e2e
+docs
+scripts
+render-credentials.local.txt
+.env
+.pytest_cache
+.coverage

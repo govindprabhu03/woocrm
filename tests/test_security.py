@@ -7,7 +7,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import LoginLimiter, make_token, read_token
-from app.config import Settings
 from app.integrations.woo import sign_payload
 from app.main import create_app
 
