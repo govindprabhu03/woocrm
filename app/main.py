@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from urllib.parse import urlparse
 
+import httpx
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +24,7 @@ CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 
 log = logging.getLogger("woocrm")
 
 
-def create_app(settings: Settings | None = None, woo_client=None, sender=None) -> FastAPI:
+def create_app(settings: Settings | None = None, woo_client=None, sender=None, http_client=None) -> FastAPI:
     """App factory: wires the Woo adapter, event bus, workflow engine and DB (all injectable for tests)."""
     settings = settings or Settings()
     settings.validate()
@@ -37,6 +38,7 @@ def create_app(settings: Settings | None = None, woo_client=None, sender=None) -
                             else HttpWooClient(settings.woo_url, settings.woo_key, settings.woo_secret))
     st.bus = EventBus()
     st.limiter = auth.LoginLimiter()
+    st.http = http_client or httpx.Client(timeout=10)  # outbound calls (Google OAuth)
     st.bus.subscribe(WorkflowEngine(st.sender).handle)
 
     with st.session_factory() as db:

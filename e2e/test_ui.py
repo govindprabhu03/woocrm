@@ -140,3 +140,30 @@ def test_mobile_viewport_has_no_horizontal_overflow(browser, server):
     pg.wait_for_timeout(1200)
     assert pg.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
     ctx.close()
+
+
+def test_google_button_is_hidden_when_google_is_not_configured(page):
+    page.goto(page.base)
+    expect(page.locator("#login")).to_be_visible()
+    expect(page.locator("#gwrap")).to_be_hidden()
+
+
+def test_google_button_starts_oauth_with_pkce_and_shows_login_errors(browser, google_server):
+    ctx = browser.new_context()
+    pg = ctx.new_page()
+    pg.goto(google_server)
+    button = pg.get_by_role("link", name="Sign in with Google")
+    expect(button).to_be_visible()
+    assert button.get_attribute("href") == "/api/auth/google/login"
+    # what the browser would follow: our 303 to Google (not followed here, so no network call to Google)
+    r = pg.request.get(google_server + "/api/auth/google/login", max_redirects=0)
+    assert r.status == 303
+    loc = r.headers["location"]
+    assert loc.startswith("https://accounts.google.com/o/oauth2/v2/auth?")
+    for needle in ("code_challenge_method=S256", "client_id=cid.apps.googleusercontent.com", "state=", "scope=openid+email"):
+        assert needle in loc, needle
+    # an allowlist rejection comes back as ?login_error=... and is shown on the login card, then removed from the URL
+    pg.goto(google_server + "/?login_error=This%20Google%20account%20is%20not%20allowed%20to%20access%20WooCRM.")
+    expect(pg.locator("#lerr")).to_contain_text("not allowed")
+    assert "login_error" not in pg.url
+    ctx.close()

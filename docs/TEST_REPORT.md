@@ -5,7 +5,7 @@ Run date: 2026-10-14 · Python 3.12 · FastAPI 0.143 · SQLAlchemy 2.1
 ## Summary
 | Check | Result |
 |---|---|
-| Automated tests | **55 passed + 13 browser tests passed, 0 failed** (unit 17, Woo-client contract 3, API end-to-end 9, security 18, email/SendGrid 8; Playwright/Chromium 13) |
+| Automated tests | **77 passed + 15 browser tests passed, 0 failed** (unit 22, Woo-client contract 3, API end-to-end 9, security 18, email/SendGrid 8, Google sign-in 17; Playwright/Chromium 15) |
 | Code coverage | **96 %** of `app/` (CI gate ≥ 90 %) |
 | Static security analysis (bandit) | **0 high / 0 medium**; 2 low findings reviewed and annotated (deterministic mock-data RNG; dev-only default secret rejected in production) |
 | Dependency audit (pip-audit) | **No known vulnerabilities** |

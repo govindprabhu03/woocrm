@@ -40,7 +40,8 @@ def test_api_requires_login_but_health_and_static_do_not(ac):
 
 
 def test_login_flow_and_logout(ac):
-    assert ac.get("/api/auth/me").json() == {"auth_required": True, "authenticated": False, "user": None}
+    me = ac.get("/api/auth/me").json()
+    assert (me["auth_required"], me["authenticated"], me["user"], me["google_enabled"]) == (True, False, None, False)
     assert login(ac, "wrong").status_code == 401
     assert login(ac, user="root").status_code == 401
     r = login(ac)

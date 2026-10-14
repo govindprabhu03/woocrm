@@ -19,6 +19,12 @@ Why: WooCRM is a long-running Python server that must receive public **webhooks*
 5. Press **Sync** once to import history (quiet — sends no emails).
 6. **Durable data:** create a Render Postgres and set `DATABASE_URL` (the `postgres://` form is accepted).
 
+## Enable "Sign in with Google" (optional, free)
+1. Google Cloud Console -> create/select a project -> **APIs & Services -> OAuth consent screen** (External, add your own Google account as a *Test user* while the app is in Testing).
+2. **Credentials -> Create credentials -> OAuth client ID -> Web application.** Add the **Authorized redirect URI** exactly: `https://<your-app>.onrender.com/api/auth/google/callback` (add `http://localhost:8100/api/auth/google/callback` for local use).
+3. Copy the Client ID and Client secret into Render -> Environment: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and **`GOOGLE_ALLOWED_EMAILS`** (e.g. `you@gmail.com, @yourcompany.com`). Without the allowlist, Google login stays disabled.
+4. Save (Render redeploys). The login card then shows "Sign in with Google"; accounts not on the allowlist are refused.
+
 ## Production readiness checklist
 - [x] Authentication, signed webhooks, fail-closed config, security headers (see `SECURITY.md`)
 - [x] Health endpoint, non-root container, pinned dependencies, CI (tests, coverage gate, bandit, pip-audit, docker build)

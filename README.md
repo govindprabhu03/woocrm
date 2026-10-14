@@ -54,7 +54,7 @@ Design patterns: **Adapter** (`WooClient` port: HTTP + Mock), **Strategy** (`Ema
 6. SQLite for demo; set `DATABASE_URL` for Postgres. Single-tenant, no user auth (out of scope for the hackathon).
 
 ## Security & quality
-Admin login (signed HttpOnly session cookie), HMAC-verified webhooks, brute-force lockout, CSRF/CSP/security headers, input limits, fail-closed production config. Details: [`SECURITY.md`](SECURITY.md) · QA results: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) · Deploying: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+Admin login (signed HttpOnly session cookie) with optional **Sign in with Google** (OAuth 2.0 + PKCE, allowlist-only), HMAC-verified webhooks, brute-force lockout, CSRF/CSP/security headers, input limits, fail-closed production config. Details: [`SECURITY.md`](SECURITY.md) · QA results: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) · Deploying: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 To enable login set `ADMIN_PASSWORD` (and `SESSION_SECRET`); with `ENV=production` they are mandatory. Without them the app runs open for local development only.
 
@@ -65,6 +65,7 @@ To enable login set `ADMIN_PASSWORD` (and `SESSION_SECRET`); with `ENV=productio
 | `ADMIN_USER` / `ADMIN_PASSWORD` | prod | `admin` / *(empty = auth off, dev only)* | Dashboard login (password ≥ 12 chars in prod) |
 | `SESSION_SECRET` | prod | – | Signs session cookies (≥ 32 chars) |
 | `WOO_WEBHOOK_SECRET` | prod | dev placeholder | HMAC secret shared with WooCommerce webhooks (≥ 16 chars) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_ALLOWED_EMAILS` | – | empty → Google sign-in off | "Sign in with Google". The allowlist (emails or `@domain`) is mandatory; without it Google login stays disabled. Optional `GOOGLE_REDIRECT_URI` |
 | `WOO_URL`, `WOO_KEY`, `WOO_SECRET` | real store | empty → built-in mock store | WooCommerce REST v3 connection |
 | `GEMINI_API_KEY` (alias `GOOGLE_API_KEY`) | – | empty → rule-based agent | Free key from Google AI Studio |
 | `GEMINI_MODEL` | – | `gemini-2.5-flash` | Preferred Gemini model. If it is missing or out of free quota, the agent auto-switches to the best model your key can use. Admin diagnostic: `GET /api/agent/status` |

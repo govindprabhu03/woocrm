@@ -5,6 +5,7 @@
 |---|---|---|
 | Unauthorised access to customer data | Admin login; every `/api/*` route (except the signed webhook and `/auth/*`) requires a valid session | `test_api_requires_login…` |
 | Session forgery / tampering | HMAC-SHA256 signed token with 8h expiry, constant-time comparison; cookie is `HttpOnly`, `SameSite=Strict`, `Secure` in production | `test_tampered_forged_and_expired_tokens_rejected`, `test_login_flow_and_logout` |
+| Google sign-in abuse (any Google user becoming admin, CSRF, forged callbacks) | Authorization-code flow + PKCE; random `state` bound to a signed short-lived cookie; **mandatory email allowlist** (exact address or `@domain`); `email_verified` must be true; look-alike domains rejected; feature stays off without an allowlist (production refuses to boot misconfigured); an unset admin password can never be matched | `tests/test_google.py` |
 | Password brute force | 5 failed logins / 5 min per IP → HTTP 429 (even for the right password while locked); failures are logged | `test_brute_force_lockout`, `test_limiter_window_expires` |
 | Forged webhooks | `X-WC-Webhook-Signature` = base64(HMAC-SHA256(secret, body)), verified in constant time → 401 | `test_webhook_uses_hmac_not_session`, `test_webhook_rejects_bad_signature` |
 | Webhook replay / retries | Delivery-ID ledger (each ID processed once); workflow emails deduped by unique key | `test_new_order_webhook_triggers_workflow_and_dedupes` |
