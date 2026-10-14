@@ -1,13 +1,14 @@
 import json
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.agent.agent import build_agent
 from app.agent.tools import retention_run
+from app.auth import require_auth
 from app.db import utcnow
 from app.domain.segmentation import SEGMENTS, rfm_score
 from app.integrations.woo import sign_payload, verify_signature
@@ -15,7 +16,9 @@ from app.models import Communication, Customer, Order, WebhookEvent, Workflow
 from app.services import sync
 from app.services.workflows import queue_message
 
-router = APIRouter(prefix="/api")
+MAX_WEBHOOK_BYTES = 1_000_000
+router = APIRouter(prefix="/api", dependencies=[Depends(require_auth)])  # admin-only
+public = APIRouter(prefix="/api")  # webhook: authenticated by HMAC signature instead
 
 
 def get_db(request: Request):
@@ -85,8 +88,8 @@ def get_customer(cid: int, db: Session = Depends(get_db)):
 
 
 class CustomerPatch(BaseModel):
-    tags: list[str] | None = None
-    notes: str | None = None
+    tags: list[Annotated[str, Field(max_length=50)]] | None = Field(default=None, max_length=20)
+    notes: str | None = Field(default=None, max_length=5000)
 
 
 @router.patch("/customers/{cid}")
@@ -104,7 +107,7 @@ def patch_customer(cid: int, body: CustomerPatch, db: Session = Depends(get_db))
 
 @router.get("/orders")
 def list_orders(status: str | None = None, db: Session = Depends(get_db)):
-    stmt = select(Order).order_by(Order.created_at.desc()).limit(200)
+    stmt = select(Order).options(joinedload(Order.customer)).order_by(Order.created_at.desc()).limit(200)
     if status:
         stmt = stmt.where(Order.status == status)
     return [order_dict(o) for o in db.scalars(stmt)]
@@ -133,16 +136,22 @@ def ingest_webhook(db: Session, bus, delivery_id: str, topic: str, payload: dict
     return {"status": "processed", "topic": topic}
 
 
-@router.post("/webhooks/woocommerce")
+@public.post("/webhooks/woocommerce")
 async def woo_webhook(request: Request, db: Session = Depends(get_db),
                       x_wc_webhook_signature: str = Header(""), x_wc_webhook_id: str = Header(""),
                       x_wc_webhook_topic: str = Header("")):
     body = await request.body()
+    if len(body) > MAX_WEBHOOK_BYTES:
+        raise HTTPException(413, "Payload too large")
     if not verify_signature(request.app.state.settings.webhook_secret, body, x_wc_webhook_signature):
         raise HTTPException(401, "Invalid webhook signature")
     if not x_wc_webhook_id or not x_wc_webhook_topic:
         raise HTTPException(400, "Missing webhook headers")
-    return ingest_webhook(db, request.app.state.bus, x_wc_webhook_id, x_wc_webhook_topic, json.loads(body or b"{}"))
+    try:
+        return ingest_webhook(db, request.app.state.bus, x_wc_webhook_id, x_wc_webhook_topic, json.loads(body or b"{}"))
+    except (ValueError, KeyError, TypeError, AttributeError):
+        db.rollback()  # delivery stays unrecorded so a corrected retry is processed
+        raise HTTPException(422, "Malformed webhook payload")
 
 
 class Simulate(BaseModel):
@@ -155,7 +164,7 @@ class Simulate(BaseModel):
 def simulate(body: Simulate, request: Request, db: Session = Depends(get_db)):
     """Demo helper: mutate the mock store and deliver a *signed* webhook through the real ingestion path."""
     st = request.app.state
-    if not st.settings.use_mock_store:
+    if not (st.settings.use_mock_store and st.settings.allow_simulation):
         raise HTTPException(400, "Simulation only available with the built-in mock store")
     store = st.woo
     if body.action == "new_customer":
@@ -176,13 +185,13 @@ def simulate(body: Simulate, request: Request, db: Session = Depends(get_db)):
 
 # ---------- workflows & communications ----------
 class WorkflowIn(BaseModel):
-    name: str
-    trigger: str
+    name: str = Field(min_length=1, max_length=120)
+    trigger: str = Field(pattern=r"^(customer\.created|order\.created|order\.status:[a-z-]{3,20}|segment\.changed)$")
     conditions: dict = {}
     action: Literal["send_email", "add_tag"] = "send_email"
-    subject: str = ""
-    body: str = ""
-    tag: str = ""
+    subject: str = Field(default="", max_length=255)
+    body: str = Field(default="", max_length=5000)
+    tag: str = Field(default="", max_length=50)
     enabled: bool = True
 
 
@@ -211,7 +220,8 @@ def toggle_workflow(wid: int, enabled: bool, db: Session = Depends(get_db)):
 
 @router.get("/communications")
 def list_comms(status: str | None = None, db: Session = Depends(get_db)):
-    stmt = select(Communication).order_by(Communication.created_at.desc(), Communication.id.desc()).limit(200)
+    stmt = (select(Communication).options(joinedload(Communication.customer))
+            .order_by(Communication.created_at.desc(), Communication.id.desc()).limit(200))
     if status:
         stmt = stmt.where(Communication.status == status)
     return [comm_dict(m) for m in db.scalars(stmt)]
@@ -230,7 +240,7 @@ def approve(mid: int, request: Request, db: Session = Depends(get_db)):
 
 # ---------- agent ----------
 class ChatIn(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=2000)
 
 
 @router.post("/agent/chat")

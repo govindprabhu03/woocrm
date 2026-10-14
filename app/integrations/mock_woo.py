@@ -15,7 +15,7 @@ STATUSES = ["completed", "completed", "completed", "processing", "on-hold", "can
 
 class MockWooStore:
     def __init__(self, seed: int = 7, now: datetime | None = None):
-        self._rng = random.Random(seed)
+        self._rng = random.Random(seed)  # nosec B311 - deterministic demo data, not security-sensitive
         self._now = now or datetime.utcnow()
         self._customers: list[dict] = []
         self._orders: list[dict] = []

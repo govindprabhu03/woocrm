@@ -3,6 +3,20 @@ services:
     name: woocrm
     runtime: docker
     plan: free
+    healthCheckPath: /health
     envVars:
+      - key: ENV
+        value: production
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASSWORD
+        generateValue: true        # read it in the Render dashboard -> Environment
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: WOO_WEBHOOK_SECRET
+        generateValue: true        # paste the same value into WooCommerce -> Webhooks -> Secret
+      - key: ALLOW_SIMULATION      # demo buttons (simulate order); set to 0 when connected to a real store
+        value: "1"
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Real store: set WOO_URL, WOO_KEY, WOO_SECRET. Persistent DB: set DATABASE_URL to a Postgres URL.

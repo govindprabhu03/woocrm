@@ -2,7 +2,7 @@
 
 A CRM that plugs into WooCommerce to give store owners **customer data management**, **order tracking** and **automated communication workflows**, plus an **agentic AI assistant** that does retention work for them.
 
-![stack](https://img.shields.io/badge/FastAPI-SQLAlchemy-blue) ![tests](https://img.shields.io/badge/tests-23%20passing-green)
+![stack](https://img.shields.io/badge/FastAPI-SQLAlchemy-blue) ![tests](https://img.shields.io/badge/tests-44%20passing-green) ![coverage](https://img.shields.io/badge/coverage-96%25-green)
 
 ## Quick start (no WooCommerce store needed)
 ```bash
@@ -10,7 +10,7 @@ python -m venv .venv && .venv/Scripts/activate      # (source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:create_app --factory --port 8100
 # open http://localhost:8100   (API docs: /docs)
-pytest                                              # 23 unit + end-to-end tests
+pytest --cov=app                                    # 44 unit, contract, e2e and security tests (96% coverage)
 ```
 By default the app uses a **built-in Mock WooCommerce store** (seeded with 40 customers / 80 orders in the real Woo REST v3 payload shape). To connect a real store set `WOO_URL`, `WOO_KEY`, `WOO_SECRET`, `WOO_WEBHOOK_SECRET` (see `.env.example`). Set `ANTHROPIC_API_KEY` to power the agent with Claude; without it a rule-based fallback is used.
 
@@ -50,9 +50,14 @@ Design patterns: **Adapter** (`WooClient` port: HTTP + Mock), **Strategy** (`Ema
 5. Email delivery is pluggable; the demo sender records messages in the log (implement `EmailSender.send` for SMTP/SendGrid).
 6. SQLite for demo; set `DATABASE_URL` for Postgres. Single-tenant, no user auth (out of scope for the hackathon).
 
+## Security & quality
+Admin login (signed HttpOnly session cookie), HMAC-verified webhooks, brute-force lockout, CSRF/CSP/security headers, input limits, fail-closed production config. Details: [`SECURITY.md`](SECURITY.md) · QA results: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) · Deploying: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+To enable login set `ADMIN_PASSWORD` (and `SESSION_SECRET`); with `ENV=production` they are mandatory. Without them the app runs open for local development only.
+
 ## Operations
 - **Docker**: `docker build -t woocrm . && docker run -p 8100:8100 woocrm`
-- **Render**: `render.yaml` included (free web service).
+- **Render**: `render.yaml` included — one-click Blueprint deploy with auto-generated secrets (recommended platform, see deployment guide).
 - **CI**: `.github/workflows/ci.yml` runs pytest on every push.
 - **Demo script**: `docs/VIDEO_SCRIPT.md`. **How AI was used**: `AI_USAGE.md`.
 

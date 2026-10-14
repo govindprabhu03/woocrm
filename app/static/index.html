@@ -61,12 +61,13 @@ input,select,textarea{font:inherit;background:var(--t2);color:var(--tx);border:2
 </style></head><body>
 <div class="top"><div class="lg">Woo<b>CRM</b></div>
 <a data-v="dash" class="on">Overview</a><a data-v="cust">Customers</a><a data-v="ord">Orders</a><a data-v="wf">Workflows</a><a data-v="comm">Messages<span class="badge" id="draftBadge" hidden></span></a><a data-v="agent">✦ AI</a>
-<a onclick="pal(1)" title="Ctrl K">⌘K</a></div>
+<a onclick="pal(1)" title="Ctrl K">⌘K</a><a id="logout" onclick="logout()" hidden>Sign out</a></div>
 <main id="main"></main>
 <div class="scrim" id="scrim" onclick="closeAll()"></div><div class="sheet" id="panel"></div>
 <div class="pal" id="pal"><input id="pq" placeholder="Search customers or type a command…" oninput="palRender()" onkeydown="palKey(event)"><div id="pres" style="max-height:340px;overflow:auto;padding:6px 0"></div></div><div class="toast" id="toast"></div>
+<div class="scrim open" id="loginScrim" hidden style="z-index:60"></div><form class="sheet open" id="login" hidden style="z-index:61;width:min(420px,92vw);text-align:center" onsubmit="doLogin(event)"><div style="font-size:34px;font-weight:900;letter-spacing:-.04em">Woo<span style="color:var(--bl)">CRM</span></div><p class="mut" style="margin:6px 0 22px">Sign in to your workspace</p><input id="lu" placeholder="Username" autocomplete="username" style="width:100%;margin-bottom:12px"><input id="lp" type="password" placeholder="Password" autocomplete="current-password" style="width:100%;margin-bottom:14px"><div id="lerr" style="color:#e11d48;font-weight:600;min-height:22px;margin-bottom:6px"></div><button class="btn bl" style="width:100%">Sign in</button></form>
 <script>
-const $=s=>document.querySelector(s),api=(p,o={})=>fetch('/api'+p,{headers:{'Content-Type':'application/json'},...o,body:o.body&&JSON.stringify(o.body)}).then(r=>r.json())
+const $=s=>document.querySelector(s),api=(p,o={})=>fetch('/api'+p,{headers:{'Content-Type':'application/json'},...o,body:o.body&&JSON.stringify(o.body)}).then(r=>{if(r.status==401&&!p.startsWith('/auth/')){showLogin();return new Promise(()=>{})}return r.json()})
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
 const money=n=>'₹'+Math.round(n).toLocaleString('en-IN'),ago=d=>d?new Date(d).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):'—',wait=ms=>new Promise(r=>setTimeout(r,ms))
 const pill=s=>`<span class="pill ${s}">${s.replace('_',' ')}</span>`
@@ -144,5 +145,10 @@ async function palRender(){const q=$('#pq').value.trim();P=CMDS.filter(c=>c[1].t
 function drawPal(){$('#pres').innerHTML=P.map((p,i)=>`<div class="it ${i==sel?'sel':''}" onclick="P[${i}].f()"><span>${p.i}</span>${esc(p.t)}</div>`).join('')}
 function palKey(e){if(e.key=='ArrowDown'){sel=Math.min(sel+1,P.length-1);drawPal();e.preventDefault()}else if(e.key=='ArrowUp'){sel=Math.max(sel-1,0);drawPal();e.preventDefault()}else if(e.key=='Enter'&&P[sel])P[sel].f()}
 addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()=='k'){e.preventDefault();pal(1)}if(e.key=='Escape')closeAll()})
-render()
+function showLogin(){$('#loginScrim').hidden=false;$('#login').hidden=false;setTimeout(()=>$('#lu').focus(),50)}
+async function doLogin(e){e.preventDefault();const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('#lu').value,password:$('#lp').value})});
+ if(r.ok){$('#loginScrim').hidden=true;$('#login').hidden=true;$('#lp').value='';$('#lerr').textContent='';boot()}else{$('#lerr').textContent=(await r.json()).detail||'Sign-in failed';$('#lp').value=''}}
+async function logout(){await fetch('/api/auth/logout',{method:'POST'});location.reload()}
+async function boot(){const me=await fetch('/api/auth/me').then(r=>r.json());$('#logout').hidden=!me.auth_required;if(me.auth_required&&!me.authenticated)return showLogin();render()}
+boot()
 </script></body></html>
