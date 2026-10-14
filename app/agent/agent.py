@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 from app.agent.tools import TOOL_SPECS, CrmTools, retention_run
 
 log = logging.getLogger("woocrm.agent")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+API = "https://generativelanguage.googleapis.com/v1beta"
+GEMINI_URL = API + "/models/{model}:generateContent"
+_MODEL_CACHE: dict[str, str] = {}  # configured model -> model actually usable with this key
 SYSTEM = ("You are the CRM assistant for a WooCommerce store. Use the tools to answer from real data. "
           "Never claim to have sent email: drafts require human approval. Be concise.")
 
@@ -42,13 +44,51 @@ def gemini_declarations() -> list[dict]:
     return decls
 
 
+def pick_model(models: list[dict]) -> str | None:
+    """Best usable chat model from a ListModels response: stable full-size Flash first, newest version wins."""
+    def score(m: dict):
+        name = m["name"].removeprefix("models/")
+        ver = re.search(r"gemini-(\d+(?:\.\d+)?)", name)
+        return (("flash" in name and "lite" not in name), not re.search(r"preview|exp", name),
+                float(ver.group(1)) if ver else 0.0, name)
+
+    banned = ("image", "tts", "live", "embed", "audio", "vision", "robotics", "computer", "aqa")
+    ok = [m for m in models if "generateContent" in m.get("supportedGenerationMethods", [])
+          and m["name"].startswith("models/gemini") and not any(b in m["name"] for b in banned)]
+    return max(ok, key=score)["name"].removeprefix("models/") if ok else None
+
+
 class GeminiAgent:
     name = "gemini"
 
     def __init__(self, db: Session, api_key: str, model: str, http: httpx.Client | None = None, max_steps: int = 6):
         self.db, self.tools = db, CrmTools(db)
-        self._key, self.model, self.max_steps = api_key, model, max_steps
+        self._key, self.configured_model, self.max_steps = api_key, model, max_steps
         self._http = http or httpx.Client(timeout=30)
+
+    @property
+    def model(self) -> str:
+        return _MODEL_CACHE.get(self.configured_model, self.configured_model)
+
+    def _discover_model(self) -> bool:
+        """Configured model is unavailable (404): ask the API which models this key can use and switch."""
+        r = self._http.get(f"{API}/models", params={"pageSize": 200}, headers={"x-goog-api-key": self._key})
+        r.raise_for_status()
+        found = pick_model(r.json().get("models", []))
+        if not found or found == self.model:
+            return False
+        log.warning("gemini model %s unavailable; using %s", self.model, found)
+        _MODEL_CACHE[self.configured_model] = found
+        return True
+
+    def _generate(self, contents: list):
+        body = {"system_instruction": {"parts": [{"text": SYSTEM}]}, "contents": contents,
+                "tools": [{"functionDeclarations": gemini_declarations()}]}
+        r = self._http.post(GEMINI_URL.format(model=self.model), headers={"x-goog-api-key": self._key}, json=body)
+        if r.status_code == 404 and self._discover_model():
+            r = self._http.post(GEMINI_URL.format(model=self.model), headers={"x-goog-api-key": self._key}, json=body)
+        r.raise_for_status()
+        return r
 
     def chat(self, message: str) -> dict:
         try:
@@ -64,10 +104,7 @@ class GeminiAgent:
         contents: list = [{"role": "user", "parts": [{"text": message}]}]
         trace: list = []
         for _ in range(self.max_steps):
-            r = self._http.post(GEMINI_URL.format(model=self.model), headers={"x-goog-api-key": self._key}, json={
-                "system_instruction": {"parts": [{"text": SYSTEM}]}, "contents": contents,
-                "tools": [{"functionDeclarations": gemini_declarations()}]})
-            r.raise_for_status()
+            r = self._generate(contents)
             candidates = r.json().get("candidates") or []
             if not candidates:
                 raise ValueError("empty response")
@@ -76,7 +113,7 @@ class GeminiAgent:
             calls = [p["functionCall"] for p in parts if "functionCall" in p]
             if not calls:
                 text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
-                return {"reply": text or "I couldn't produce an answer.", "tool_calls": trace, "engine": self.name}
+                return {"reply": text or "I couldn't produce an answer.", "tool_calls": trace, "engine": f"{self.name} ({self.model})"}
             contents.append(content)  # verbatim: Gemini needs its own parts (incl. thought signatures) echoed back
             results = []
             for c in calls:

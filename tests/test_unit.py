@@ -4,7 +4,8 @@ import json
 
 import httpx
 
-from app.agent.agent import GeminiAgent, RuleBasedAgent, gemini_declarations
+from app.agent import agent as agent_mod
+from app.agent.agent import GeminiAgent, RuleBasedAgent, gemini_declarations, pick_model
 from app.agent.tools import CrmTools, retention_run
 from app.db import make_session_factory
 from app.domain.segmentation import compute_segment, rfm_score
@@ -160,7 +161,7 @@ def test_gemini_tool_loop_executes_tools_and_echoes_model_parts():
         return httpx.Response(200, json={"candidates": [{"content": {"role": "model", "parts": [{"text": "Vee is your VIP."}]}}]})
 
     r = _gemini(handler, db).chat("who are my vips?")
-    assert r == {"reply": "Vee is your VIP.", "tool_calls": [{"tool": "find_customers", "args": {"segment": "vip"}}], "engine": "gemini"}
+    assert r == {"reply": "Vee is your VIP.", "tool_calls": [{"tool": "find_customers", "args": {"segment": "vip"}}], "engine": "gemini (gemini-test)"}
     key, first = requests[0]
     assert key == "test-key" and "key=" not in str(first)  # key travels in a header, not the URL/body
     second = requests[1][1]["contents"]
@@ -197,3 +198,51 @@ def test_gemini_stops_after_max_steps():
     agent.max_steps = 3
     out = agent.chat("x")
     assert out["reply"] == "Stopped after max steps." and len(out["tool_calls"]) == 3
+
+
+def test_pick_model_prefers_newest_stable_flash_and_skips_non_chat_models():
+    g = ["generateContent"]
+    models = [{"name": "models/gemini-2.5-flash", "supportedGenerationMethods": g},
+              {"name": "models/gemini-3.1-flash", "supportedGenerationMethods": g},
+              {"name": "models/gemini-3.5-flash-preview", "supportedGenerationMethods": g},
+              {"name": "models/gemini-3.1-flash-lite", "supportedGenerationMethods": g},
+              {"name": "models/gemini-3.1-flash-image", "supportedGenerationMethods": g},
+              {"name": "models/gemini-9-pro", "supportedGenerationMethods": g},
+              {"name": "models/gemini-embedding-001", "supportedGenerationMethods": ["embedContent"]},
+              {"name": "models/gemma-3", "supportedGenerationMethods": g}]
+    assert pick_model(models) == "gemini-3.1-flash"
+    assert pick_model([]) is None and pick_model([{"name": "models/gemma-3", "supportedGenerationMethods": g}]) is None
+
+
+def test_gemini_404_discovers_a_working_model_retries_and_remembers_it():
+    agent_mod._MODEL_CACHE.clear()
+    db, posted = _seeded_db(), []
+    listing = {"models": [{"name": "models/gemini-4-flash", "supportedGenerationMethods": ["generateContent"]}]}
+
+    def handler(req):
+        if req.method == "GET":
+            assert req.headers["x-goog-api-key"] == "test-key"
+            return httpx.Response(200, json=listing)
+        posted.append(req.url.path)
+        if "gemini-old" in req.url.path:
+            return httpx.Response(404, json={"error": {"message": "model not found"}})
+        return httpx.Response(200, json={"candidates": [{"content": {"role": "model", "parts": [{"text": "ok"}]}}]})
+
+    mk = lambda: GeminiAgent(db, "test-key", "gemini-old", http=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert mk().chat("hi")["engine"] == "gemini (gemini-4-flash)"
+    assert posted == ["/v1beta/models/gemini-old:generateContent", "/v1beta/models/gemini-4-flash:generateContent"]
+    posted.clear()
+    mk().chat("again")  # cached: no repeat of the failing model
+    assert posted == ["/v1beta/models/gemini-4-flash:generateContent"]
+    agent_mod._MODEL_CACHE.clear()
+
+
+def test_gemini_404_with_no_usable_model_falls_back_to_rules():
+    agent_mod._MODEL_CACHE.clear()
+    db = _seeded_db()
+
+    def handler(req):
+        return httpx.Response(200, json={"models": []}) if req.method == "GET" else httpx.Response(404)
+
+    out = GeminiAgent(db, "k", "gone", http=httpx.Client(transport=httpx.MockTransport(handler))).chat("overview")
+    assert out["engine"] == "rules (gemini unavailable: HTTP 404)"
