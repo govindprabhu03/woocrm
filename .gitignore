@@ -4,3 +4,4 @@ __pycache__/
 *.log
 .env
 .pytest_cache/
+render-credentials.local.txt
