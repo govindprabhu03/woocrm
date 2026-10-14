@@ -144,6 +144,8 @@ async def woo_webhook(request: Request, db: Session = Depends(get_db),
         raise HTTPException(413, "Payload too large")
     if not verify_signature(request.app.state.settings.webhook_secret, body, x_wc_webhook_signature):
         raise HTTPException(401, "Invalid webhook signature")
+    if body.startswith(b"webhook_id="):  # WooCommerce's form-encoded "ping" sent when a webhook is created/activated
+        return {"status": "pong"}
     if not x_wc_webhook_id or not x_wc_webhook_topic:
         raise HTTPException(400, "Missing webhook headers")
     try:

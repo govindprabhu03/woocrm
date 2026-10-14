@@ -181,3 +181,13 @@ def test_unknown_routes_and_methods(client):
     assert client.get("/api/nope").status_code == 404
     assert client.delete("/api/customers/1").status_code == 405
     assert client.get("/api/orders", params={"status": "'; --"}).json() == []
+
+
+def test_woocommerce_webhook_creation_ping_is_acknowledged_not_failed(client):
+    from app.integrations.woo import sign_payload as sign
+
+    body = b"webhook_id=17"
+    r = client.post("/api/webhooks/woocommerce", content=body, headers={"X-WC-Webhook-Signature": sign("demo-webhook-secret", body)})
+    assert r.status_code == 200 and r.json()["status"] == "pong"
+    bad = client.post("/api/webhooks/woocommerce", content=body, headers={"X-WC-Webhook-Signature": "wrong"})
+    assert bad.status_code == 401  # pings are still signature-checked
